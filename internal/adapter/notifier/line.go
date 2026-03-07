@@ -2,6 +2,7 @@ package notifier
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,17 +13,22 @@ import (
 	"github.com/shunsuke-suzuki-zeroboard/sedori/internal/domain"
 )
 
+const lineAPIPushURL = "https://api.line.me/v2/bot/message/push"
+
 // LINENotifier sends notifications via LINE Messaging API.
 type LINENotifier struct {
 	channelAccessToken string
 	userID             string
+	baseURL            string // defaults to lineAPIPushURL; overridden in tests
 	client             *http.Client
 }
 
+// NewLINENotifier creates a new LINENotifier.
 func NewLINENotifier(channelAccessToken, userID string) *LINENotifier {
 	return &LINENotifier{
 		channelAccessToken: channelAccessToken,
 		userID:             userID,
+		baseURL:            lineAPIPushURL,
 		client:             &http.Client{Timeout: 10 * time.Second},
 	}
 }
@@ -38,22 +44,22 @@ type lineTextMessage struct {
 }
 
 // Notify sends price diff notifications to LINE.
-func (l *LINENotifier) Notify(diffs []domain.PriceDiff) error {
+func (l *LINENotifier) Notify(ctx context.Context, diffs []domain.PriceDiff) error {
 	if len(diffs) == 0 {
 		return nil
 	}
 
 	text := l.formatMessage(diffs)
-	return l.send(text)
+	return l.send(ctx, text)
 }
 
 // SendText sends a simple text message to LINE (useful for testing).
-func (l *LINENotifier) SendText(text string) error {
-	return l.send(text)
+func (l *LINENotifier) SendText(ctx context.Context, text string) error {
+	return l.send(ctx, text)
 }
 
 // send pushes a text message to the configured LINE user.
-func (l *LINENotifier) send(text string) error {
+func (l *LINENotifier) send(ctx context.Context, text string) error {
 	msg := lineMessage{
 		To: l.userID,
 		Messages: []interface{}{
@@ -69,7 +75,7 @@ func (l *LINENotifier) send(text string) error {
 		return fmt.Errorf("line: failed to marshal message: %w", err)
 	}
 
-	req, err := http.NewRequest(http.MethodPost, "https://api.line.me/v2/bot/message/push", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, l.baseURL, bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("line: failed to create request: %w", err)
 	}

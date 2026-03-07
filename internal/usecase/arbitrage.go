@@ -55,7 +55,7 @@ func (u *ArbitrageUseCase) Execute(ctx context.Context) error {
 			d.Keyword, d.BuyFrom.Site, d.BuyFrom.Price, d.SellAt.Site, d.SellAt.Price, d.PriceDiff, d.ProfitRate)
 	}
 
-	if err := u.notifier.Notify(diffs); err != nil {
+	if err := u.notifier.Notify(ctx, diffs); err != nil {
 		return fmt.Errorf("usecase: failed to notify: %w", err)
 	}
 	log.Println("Notification sent successfully!")

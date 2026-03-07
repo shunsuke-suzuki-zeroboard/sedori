@@ -10,5 +10,5 @@ type ProductSearcher interface {
 
 // Notifier sends arbitrage opportunity notifications.
 type Notifier interface {
-	Notify(diffs []PriceDiff) error
+	Notify(ctx context.Context, diffs []PriceDiff) error
 }

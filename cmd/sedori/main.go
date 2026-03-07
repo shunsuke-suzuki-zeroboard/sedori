@@ -89,10 +89,11 @@ func main() {
 }
 
 func runTestLine(ln *notifier.LINENotifier) {
+	ctx := context.Background()
 	log.Println("Sending test notification to LINE...")
 
 	// 1) Simple text test
-	if err := ln.SendText("🔔 せどり通知ツール: テスト送信です。このメッセージが届いていれば設定は正常です。"); err != nil {
+	if err := ln.SendText(ctx, "🔔 せどり通知ツール: テスト送信です。このメッセージが届いていれば設定は正常です。"); err != nil {
 		log.Fatalf("Test failed: %v", err)
 	}
 	log.Println("Simple text test: OK")
@@ -117,7 +118,7 @@ func runTestLine(ln *notifier.LINENotifier) {
 			ProfitRate: 17.4,
 		},
 	}
-	if err := ln.Notify(diffs); err != nil {
+	if err := ln.Notify(ctx, diffs); err != nil {
 		log.Fatalf("Notification test failed: %v", err)
 	}
 	log.Println("Arbitrage notification test: OK")
