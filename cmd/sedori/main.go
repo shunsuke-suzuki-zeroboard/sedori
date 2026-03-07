@@ -21,6 +21,7 @@ import (
 func main() {
 	configPath := flag.String("config", "config.json", "path to config file")
 	once := flag.Bool("once", false, "run once and exit (no periodic monitoring)")
+	testLine := flag.Bool("test-line", false, "send a test notification to LINE and exit")
 	flag.Parse()
 
 	cfg, err := config.Load(*configPath)
@@ -28,12 +29,17 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
+	lineNotifier := notifier.NewLINENotifier(cfg.LINE.ChannelAccessToken, cfg.LINE.UserID)
+
+	if *testLine {
+		runTestLine(lineNotifier)
+		return
+	}
+
 	scrapers := buildScrapers(cfg)
 	if len(scrapers) == 0 {
 		log.Fatal("No scrapers enabled. Enable at least one site in config.")
 	}
-
-	lineNotifier := notifier.NewLINENotifier(cfg.LINE.ChannelAccessToken, cfg.LINE.UserID)
 
 	log.Printf("Starting sedori monitor with %d scrapers, interval=%dm", len(scrapers), cfg.IntervalMinutes)
 	log.Printf("Keywords: %v", cfg.Keywords)
@@ -70,6 +76,42 @@ func main() {
 			run(ctx, cfg, scrapers, lineNotifier)
 		}
 	}
+}
+
+func runTestLine(ln *notifier.LINENotifier) {
+	log.Println("Sending test notification to LINE...")
+
+	// 1) Simple text test
+	if err := ln.SendText("🔔 せどり通知ツール: テスト送信です。このメッセージが届いていれば設定は正常です。"); err != nil {
+		log.Fatalf("Test failed: %v", err)
+	}
+	log.Println("Simple text test: OK")
+
+	// 2) Sample arbitrage notification
+	diffs := []model.PriceDiff{
+		{
+			Keyword: "Nintendo Switch",
+			BuyFrom: model.Product{
+				Title: "Nintendo Switch 本体",
+				Price: 29800,
+				URL:   "https://example.com/buy",
+				Site:  model.SiteMercari,
+			},
+			SellAt: model.Product{
+				Title: "Nintendo Switch 本体",
+				Price: 35000,
+				URL:   "https://example.com/sell",
+				Site:  model.SiteAmazon,
+			},
+			PriceDiff:  5200,
+			ProfitRate: 17.4,
+		},
+	}
+	if err := ln.Notify(diffs); err != nil {
+		log.Fatalf("Notification test failed: %v", err)
+	}
+	log.Println("Arbitrage notification test: OK")
+	log.Println("All LINE tests passed!")
 }
 
 func buildScrapers(cfg *config.Config) []scraper.Scraper {

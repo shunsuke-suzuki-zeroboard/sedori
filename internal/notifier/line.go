@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -74,7 +75,47 @@ func (l *LINENotifier) Notify(diffs []model.PriceDiff) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("line: unexpected status code: %d", resp.StatusCode)
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("line: unexpected status code: %d, body: %s", resp.StatusCode, string(respBody))
+	}
+
+	return nil
+}
+
+// SendText sends a simple text message to LINE (useful for testing).
+func (l *LINENotifier) SendText(text string) error {
+	msg := lineMessage{
+		To: l.userID,
+		Messages: []interface{}{
+			lineTextMessage{
+				Type: "text",
+				Text: text,
+			},
+		},
+	}
+
+	body, err := json.Marshal(msg)
+	if err != nil {
+		return fmt.Errorf("line: failed to marshal message: %w", err)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, "https://api.line.me/v2/bot/message/push", bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("line: failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+l.channelAccessToken)
+
+	resp, err := l.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("line: request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("line: unexpected status code: %d, body: %s", resp.StatusCode, string(respBody))
 	}
 
 	return nil
