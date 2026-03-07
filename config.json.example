@@ -1,0 +1,24 @@
+{
+  "keywords": ["Nintendo Switch", "PlayStation 5", "iPhone"],
+  "min_profit_rate": 10.0,
+  "min_price_diff": 500,
+  "interval_minutes": 30,
+  "line": {
+    "channel_access_token": "YOUR_LINE_CHANNEL_ACCESS_TOKEN",
+    "user_id": "YOUR_LINE_USER_ID"
+  },
+  "amazon": {
+    "enabled": true,
+    "access_key": "YOUR_AMAZON_ACCESS_KEY",
+    "secret_key": "YOUR_AMAZON_SECRET_KEY",
+    "partner_tag": "YOUR_PARTNER_TAG",
+    "marketplace": "www.amazon.co.jp"
+  },
+  "rakuten": {
+    "enabled": true,
+    "application_id": "YOUR_RAKUTEN_APPLICATION_ID"
+  },
+  "mercari": {
+    "enabled": true
+  }
+}
