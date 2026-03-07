@@ -8,7 +8,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/shunsuke-suzuki-zeroboard/sedori/internal/model"
+	"github.com/shunsuke-suzuki-zeroboard/sedori/internal/domain"
 )
 
 // MercariScraper fetches products from Mercari's public search API.
@@ -22,8 +22,8 @@ func NewMercariScraper() *MercariScraper {
 	}
 }
 
-func (m *MercariScraper) Site() model.Site {
-	return model.SiteMercari
+func (m *MercariScraper) Site() domain.Site {
+	return domain.SiteMercari
 }
 
 type mercariResponse struct {
@@ -40,7 +40,7 @@ type mercariResponse struct {
 	} `json:"items"`
 }
 
-func (m *MercariScraper) Search(ctx context.Context, keyword string) ([]model.Product, error) {
+func (m *MercariScraper) Search(ctx context.Context, keyword string) ([]domain.Product, error) {
 	u := fmt.Sprintf(
 		"https://api.mercari.jp/v2/entities:search?keyword=%s&limit=30&status=on_sale&sort=price&order=asc",
 		url.QueryEscape(keyword),
@@ -67,17 +67,17 @@ func (m *MercariScraper) Search(ctx context.Context, keyword string) ([]model.Pr
 		return nil, fmt.Errorf("mercari: failed to decode response: %w", err)
 	}
 
-	products := make([]model.Product, 0, len(result.Items))
+	products := make([]domain.Product, 0, len(result.Items))
 	for _, item := range result.Items {
 		imageURL := ""
 		if len(item.Thumbnails) > 0 {
 			imageURL = item.Thumbnails[0]
 		}
-		products = append(products, model.Product{
+		products = append(products, domain.Product{
 			Title:     item.Name,
 			Price:     item.Price,
 			URL:       fmt.Sprintf("https://jp.mercari.com/item/%s", item.ID),
-			Site:      model.SiteMercari,
+			Site:      domain.SiteMercari,
 			ImageURL:  imageURL,
 			Condition: item.ItemCondition.Name,
 			FetchedAt: time.Now(),

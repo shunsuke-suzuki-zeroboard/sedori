@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/shunsuke-suzuki-zeroboard/sedori/internal/model"
+	"github.com/shunsuke-suzuki-zeroboard/sedori/internal/domain"
 )
 
 // AmazonScraper fetches products using the Amazon Product Advertising API (PA-API 5.0).
@@ -36,8 +36,8 @@ func NewAmazonScraper(accessKey, secretKey, partnerTag, marketplace string) *Ama
 	}
 }
 
-func (a *AmazonScraper) Site() model.Site {
-	return model.SiteAmazon
+func (a *AmazonScraper) Site() domain.Site {
+	return domain.SiteAmazon
 }
 
 type amazonSearchRequest struct {
@@ -82,7 +82,7 @@ type amazonSearchResponse struct {
 	} `json:"SearchResult"`
 }
 
-func (a *AmazonScraper) Search(ctx context.Context, keyword string) ([]model.Product, error) {
+func (a *AmazonScraper) Search(ctx context.Context, keyword string) ([]domain.Product, error) {
 	payload := amazonSearchRequest{
 		Keywords:    keyword,
 		Resources:   []string{"ItemInfo.Title", "Offers.Listings.Price", "Offers.Listings.Condition", "Images.Primary.Medium"},
@@ -130,17 +130,17 @@ func (a *AmazonScraper) Search(ctx context.Context, keyword string) ([]model.Pro
 		return nil, fmt.Errorf("amazon: failed to decode response: %w", err)
 	}
 
-	products := make([]model.Product, 0, len(result.SearchResult.Items))
+	products := make([]domain.Product, 0, len(result.SearchResult.Items))
 	for _, item := range result.SearchResult.Items {
 		if len(item.Offers.Listings) == 0 {
 			continue
 		}
 		listing := item.Offers.Listings[0]
-		products = append(products, model.Product{
+		products = append(products, domain.Product{
 			Title:     item.ItemInfo.Title.DisplayValue,
 			Price:     int(listing.Price.Amount),
 			URL:       item.DetailPage,
-			Site:      model.SiteAmazon,
+			Site:      domain.SiteAmazon,
 			ImageURL:  item.Images.Primary.Medium.URL,
 			Condition: listing.Condition.Value,
 			FetchedAt: time.Now(),

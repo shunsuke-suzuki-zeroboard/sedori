@@ -8,7 +8,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/shunsuke-suzuki-zeroboard/sedori/internal/model"
+	"github.com/shunsuke-suzuki-zeroboard/sedori/internal/domain"
 )
 
 // RakutenScraper fetches products from Rakuten Ichiba API.
@@ -24,8 +24,8 @@ func NewRakutenScraper(applicationID string) *RakutenScraper {
 	}
 }
 
-func (r *RakutenScraper) Site() model.Site {
-	return model.SiteRakuten
+func (r *RakutenScraper) Site() domain.Site {
+	return domain.SiteRakuten
 }
 
 type rakutenResponse struct {
@@ -40,7 +40,7 @@ type rakutenResponse struct {
 	} `json:"Items"`
 }
 
-func (r *RakutenScraper) Search(ctx context.Context, keyword string) ([]model.Product, error) {
+func (r *RakutenScraper) Search(ctx context.Context, keyword string) ([]domain.Product, error) {
 	u := fmt.Sprintf(
 		"https://app.rakuten.co.jp/services/api/IchibaItem/Search/20170706?applicationId=%s&keyword=%s&hits=30&sort=%%2BitemPrice",
 		r.applicationID,
@@ -67,13 +67,13 @@ func (r *RakutenScraper) Search(ctx context.Context, keyword string) ([]model.Pr
 		return nil, fmt.Errorf("rakuten: failed to decode response: %w", err)
 	}
 
-	products := make([]model.Product, 0, len(result.Items))
+	products := make([]domain.Product, 0, len(result.Items))
 	for _, item := range result.Items {
-		products = append(products, model.Product{
+		products = append(products, domain.Product{
 			Title:     item.Item.ItemName,
 			Price:     item.Item.ItemPrice,
 			URL:       item.Item.ItemURL,
-			Site:      model.SiteRakuten,
+			Site:      domain.SiteRakuten,
 			ImageURL:  item.Item.ImageURL,
 			Condition: "new",
 			FetchedAt: time.Now(),

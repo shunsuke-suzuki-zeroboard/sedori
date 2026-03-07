@@ -1,4 +1,4 @@
-package model
+package domain
 
 import "time"
 
@@ -24,9 +24,9 @@ type Product struct {
 
 // PriceDiff represents a price arbitrage opportunity between two sites.
 type PriceDiff struct {
-	Keyword   string
-	BuyFrom   Product
-	SellAt    Product
-	PriceDiff int
+	Keyword    string
+	BuyFrom    Product
+	SellAt     Product
+	PriceDiff  int
 	ProfitRate float64 // percentage
 }

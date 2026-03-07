@@ -3,19 +3,17 @@ package main
 import (
 	"context"
 	"flag"
-	"fmt"
 	"log"
 	"os"
 	"os/signal"
-	"sync"
 	"syscall"
 	"time"
 
-	"github.com/shunsuke-suzuki-zeroboard/sedori/internal/comparator"
-	"github.com/shunsuke-suzuki-zeroboard/sedori/internal/config"
-	"github.com/shunsuke-suzuki-zeroboard/sedori/internal/model"
-	"github.com/shunsuke-suzuki-zeroboard/sedori/internal/notifier"
-	"github.com/shunsuke-suzuki-zeroboard/sedori/internal/scraper"
+	"github.com/shunsuke-suzuki-zeroboard/sedori/internal/adapter/notifier"
+	"github.com/shunsuke-suzuki-zeroboard/sedori/internal/adapter/scraper"
+	"github.com/shunsuke-suzuki-zeroboard/sedori/internal/domain"
+	"github.com/shunsuke-suzuki-zeroboard/sedori/internal/infrastructure/config"
+	"github.com/shunsuke-suzuki-zeroboard/sedori/internal/usecase"
 )
 
 func main() {
@@ -36,12 +34,20 @@ func main() {
 		return
 	}
 
-	scrapers := buildScrapers(cfg)
-	if len(scrapers) == 0 {
+	searchers := buildSearchers(cfg)
+	if len(searchers) == 0 {
 		log.Fatal("No scrapers enabled. Enable at least one site in config.")
 	}
 
-	log.Printf("Starting sedori monitor with %d scrapers, interval=%dm", len(scrapers), cfg.IntervalMinutes)
+	uc := usecase.NewArbitrageUseCase(
+		searchers,
+		lineNotifier,
+		cfg.Keywords,
+		cfg.MinPriceDiff,
+		cfg.MinProfitRate,
+	)
+
+	log.Printf("Starting sedori monitor with %d scrapers, interval=%dm", len(searchers), cfg.IntervalMinutes)
 	log.Printf("Keywords: %v", cfg.Keywords)
 	log.Printf("Min profit rate: %.1f%%, Min price diff: ¥%d", cfg.MinProfitRate, cfg.MinPriceDiff)
 
@@ -58,7 +64,9 @@ func main() {
 	}()
 
 	// Run immediately
-	run(ctx, cfg, scrapers, lineNotifier)
+	if err := uc.Execute(ctx); err != nil {
+		log.Printf("Error in search cycle: %v", err)
+	}
 
 	if *once {
 		return
@@ -73,7 +81,9 @@ func main() {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			run(ctx, cfg, scrapers, lineNotifier)
+			if err := uc.Execute(ctx); err != nil {
+				log.Printf("Error in search cycle: %v", err)
+			}
 		}
 	}
 }
@@ -88,20 +98,20 @@ func runTestLine(ln *notifier.LINENotifier) {
 	log.Println("Simple text test: OK")
 
 	// 2) Sample arbitrage notification
-	diffs := []model.PriceDiff{
+	diffs := []domain.PriceDiff{
 		{
 			Keyword: "Nintendo Switch",
-			BuyFrom: model.Product{
+			BuyFrom: domain.Product{
 				Title: "Nintendo Switch 本体",
 				Price: 29800,
 				URL:   "https://example.com/buy",
-				Site:  model.SiteMercari,
+				Site:  domain.SiteMercari,
 			},
-			SellAt: model.Product{
+			SellAt: domain.Product{
 				Title: "Nintendo Switch 本体",
 				Price: 35000,
 				URL:   "https://example.com/sell",
-				Site:  model.SiteAmazon,
+				Site:  domain.SiteAmazon,
 			},
 			PriceDiff:  5200,
 			ProfitRate: 17.4,
@@ -114,11 +124,11 @@ func runTestLine(ln *notifier.LINENotifier) {
 	log.Println("All LINE tests passed!")
 }
 
-func buildScrapers(cfg *config.Config) []scraper.Scraper {
-	var scrapers []scraper.Scraper
+func buildSearchers(cfg *config.Config) []domain.ProductSearcher {
+	var searchers []domain.ProductSearcher
 
 	if cfg.Amazon.Enabled {
-		scrapers = append(scrapers, scraper.NewAmazonScraper(
+		searchers = append(searchers, scraper.NewAmazonScraper(
 			cfg.Amazon.AccessKey,
 			cfg.Amazon.SecretKey,
 			cfg.Amazon.PartnerTag,
@@ -128,65 +138,14 @@ func buildScrapers(cfg *config.Config) []scraper.Scraper {
 	}
 
 	if cfg.Rakuten.Enabled {
-		scrapers = append(scrapers, scraper.NewRakutenScraper(cfg.Rakuten.ApplicationID))
+		searchers = append(searchers, scraper.NewRakutenScraper(cfg.Rakuten.ApplicationID))
 		log.Println("Rakuten scraper enabled")
 	}
 
 	if cfg.Mercari.Enabled {
-		scrapers = append(scrapers, scraper.NewMercariScraper())
+		searchers = append(searchers, scraper.NewMercariScraper())
 		log.Println("Mercari scraper enabled")
 	}
 
-	return scrapers
-}
-
-func run(ctx context.Context, cfg *config.Config, scrapers []scraper.Scraper, lineNotifier *notifier.LINENotifier) {
-	log.Println("Starting search cycle...")
-
-	productsByKeyword := make(map[string][]model.Product)
-	var mu sync.Mutex
-
-	var wg sync.WaitGroup
-	for _, keyword := range cfg.Keywords {
-		for _, s := range scrapers {
-			wg.Add(1)
-			go func(kw string, sc scraper.Scraper) {
-				defer wg.Done()
-
-				products, err := sc.Search(ctx, kw)
-				if err != nil {
-					log.Printf("Error searching %s on %s: %v", kw, sc.Site(), err)
-					return
-				}
-
-				mu.Lock()
-				productsByKeyword[kw] = append(productsByKeyword[kw], products...)
-				mu.Unlock()
-
-				log.Printf("Found %d products for '%s' on %s", len(products), kw, sc.Site())
-			}(keyword, s)
-		}
-	}
-	wg.Wait()
-
-	// Compare prices across sites
-	diffs := comparator.Compare(productsByKeyword, cfg.MinPriceDiff, cfg.MinProfitRate)
-
-	if len(diffs) == 0 {
-		log.Println("No arbitrage opportunities found in this cycle.")
-		return
-	}
-
-	log.Printf("Found %d arbitrage opportunities!", len(diffs))
-	for _, d := range diffs {
-		fmt.Printf("  [%s] Buy: %s ¥%d -> Sell: %s ¥%d (diff: ¥%d, %.1f%%)\n",
-			d.Keyword, d.BuyFrom.Site, d.BuyFrom.Price, d.SellAt.Site, d.SellAt.Price, d.PriceDiff, d.ProfitRate)
-	}
-
-	// Send LINE notification
-	if err := lineNotifier.Notify(diffs); err != nil {
-		log.Printf("Failed to send LINE notification: %v", err)
-	} else {
-		log.Println("LINE notification sent successfully!")
-	}
+	return searchers
 }

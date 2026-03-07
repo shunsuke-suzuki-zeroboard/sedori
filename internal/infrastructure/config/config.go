@@ -8,14 +8,14 @@ import (
 
 // Config holds the application configuration.
 type Config struct {
-	Keywords         []string      `json:"keywords"`
-	MinProfitRate    float64       `json:"min_profit_rate"`    // minimum profit rate (%) to trigger notification
-	MinPriceDiff     int           `json:"min_price_diff"`     // minimum price difference (yen) to trigger notification
-	IntervalMinutes  int           `json:"interval_minutes"`   // monitoring interval
-	LINE             LINEConfig    `json:"line"`
-	Amazon           AmazonConfig  `json:"amazon"`
-	Rakuten          RakutenConfig `json:"rakuten"`
-	Mercari          MercariConfig `json:"mercari"`
+	Keywords        []string      `json:"keywords"`
+	MinProfitRate   float64       `json:"min_profit_rate"`  // minimum profit rate (%) to trigger notification
+	MinPriceDiff    int           `json:"min_price_diff"`   // minimum price difference (yen) to trigger notification
+	IntervalMinutes int           `json:"interval_minutes"` // monitoring interval
+	LINE            LINEConfig    `json:"line"`
+	Amazon          AmazonConfig  `json:"amazon"`
+	Rakuten         RakutenConfig `json:"rakuten"`
+	Mercari         MercariConfig `json:"mercari"`
 }
 
 type LINEConfig struct {
@@ -44,12 +44,12 @@ type MercariConfig struct {
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read config file: %w", err)
+		return nil, fmt.Errorf("config: failed to read file: %w", err)
 	}
 
 	var cfg Config
 	if err := json.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("failed to parse config file: %w", err)
+		return nil, fmt.Errorf("config: failed to parse file: %w", err)
 	}
 
 	if cfg.IntervalMinutes <= 0 {
