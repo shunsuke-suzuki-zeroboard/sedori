@@ -61,6 +61,30 @@ func FixedAmountRule() WithdrawalRule {
 	}
 }
 
+// SkipDownYearRule returns a rule that skips withdrawal in years following a market decline.
+// In up years, it withdraws the inflation-adjusted amount.
+func SkipDownYearRule() WithdrawalRule {
+	return WithdrawalRule{
+		Name: "下落時スキップ（前年下落なら取り崩さない、上昇年はインフレ調整）",
+		AdjustWithdrawal: func(baseWithdrawal, prevWithdrawal, inflationRate, yearReturn float64, yearIndex int) float64 {
+			if yearReturn < 0 {
+				// 前年が下落 → 今年は取り崩さない
+				return 0
+			}
+			// 前年が上昇 → インフレ調整額を取り崩す
+			// prevWithdrawalが0（前年スキップ）の場合、baseからインフレ調整で計算
+			if prevWithdrawal == 0 {
+				w := baseWithdrawal
+				for i := 0; i < yearIndex; i++ {
+					w *= (1 + inflationRate)
+				}
+				return w
+			}
+			return prevWithdrawal * (1 + inflationRate)
+		},
+	}
+}
+
 // FloorCeilingRule returns a rule that adjusts for inflation but caps increases and
 // floors decreases relative to the base withdrawal.
 // After a down year (negative return), withdrawal is not increased.

@@ -203,6 +203,92 @@ func TestFloorCeilingRule(t *testing.T) {
 	}
 }
 
+func TestSkipDownYearRule(t *testing.T) {
+	rule := SkipDownYearRule()
+
+	// After a down year, withdrawal should be 0
+	w := rule.AdjustWithdrawal(100, 100, 0.03, -0.10, 1)
+	if w != 0 {
+		t.Errorf("after down year, expected 0, got %.2f", w)
+	}
+
+	// After an up year, should return inflation-adjusted amount
+	w = rule.AdjustWithdrawal(100, 100, 0.03, 0.10, 1)
+	if math.Abs(w-103) > 0.01 {
+		t.Errorf("after up year, expected 103, got %.2f", w)
+	}
+
+	// After skip (prevWithdrawal=0), should recalculate from base
+	w = rule.AdjustWithdrawal(100, 0, 0.03, 0.10, 2)
+	expected := 100 * 1.03 * 1.03 // base * (1+inflation)^2
+	if math.Abs(w-expected) > 0.01 {
+		t.Errorf("after skip, expected %.2f, got %.2f", expected, w)
+	}
+}
+
+func TestSkipDownYearRuleSimulation(t *testing.T) {
+	// 下落→上昇→上昇 の3年間
+	returns := []AnnualReturn{
+		{2000, -0.20}, // 下落年
+		{2001, 0.30},  // 上昇年（前年下落なのでスキップ）
+		{2002, 0.10},  // 上昇年（前年上昇なので取り崩す）
+	}
+	s := Strategy{
+		InitialPortfolio: 1_000_000,
+		WithdrawalRate:   0.04,
+		InflationRate:    0.02,
+		PeriodYears:      3,
+		Rule:             SkipDownYearRule(),
+	}
+
+	result, err := Run(s, returns)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	p := result.Periods[0]
+
+	// Year 1 (2000): first year, always withdraw base = 40000
+	// remain = 960000, * 0.80 = 768000
+	if math.Abs(p.Years[0].Withdrawal-40000) > 0.01 {
+		t.Errorf("year 1 withdrawal: expected 40000, got %.2f", p.Years[0].Withdrawal)
+	}
+
+	// Year 2 (2001): previous year return was -0.20 → skip (withdrawal = 0)
+	// remain = 768000, * 1.30 = 998400
+	if p.Years[1].Withdrawal != 0 {
+		t.Errorf("year 2 withdrawal: expected 0 (skip), got %.2f", p.Years[1].Withdrawal)
+	}
+
+	// Year 3 (2002): previous year return was +0.30 → withdraw
+	// prevWithdrawal=0 なので base からインフレ調整で再計算
+	if p.Years[2].Withdrawal == 0 {
+		t.Error("year 3 withdrawal: should not be 0")
+	}
+	t.Logf("year-by-year: w1=%.0f w2=%.0f w3=%.0f final=%.0f",
+		p.Years[0].Withdrawal, p.Years[1].Withdrawal, p.Years[2].Withdrawal, p.FinalBalance)
+}
+
+func TestSkipDownYearWithSP500(t *testing.T) {
+	s := Strategy{
+		InitialPortfolio: 100_000_000,
+		WithdrawalRate:   0.04,
+		InflationRate:    0.02,
+		PeriodYears:      30,
+		Rule:             SkipDownYearRule(),
+	}
+	result, err := Run(s, SP500Returns)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// 下落時スキップルールはインフレ調整のみより成功率が高いはず
+	t.Logf("skip-down rule: %.1f%% success (%d/%d)",
+		result.SuccessRate*100, result.SuccessCount, result.TotalCount)
+	if result.SuccessRate < 0.90 {
+		t.Errorf("skip-down rule success rate unexpectedly low: %.1f%%", result.SuccessRate*100)
+	}
+}
+
 func TestRunWithSP500Data(t *testing.T) {
 	// Integration test with real S&P 500 data
 	s := Strategy{

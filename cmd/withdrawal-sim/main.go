@@ -32,7 +32,7 @@ func main() {
 	ratesStr := flag.String("rates", "", "複数の取り崩し率をカンマ区切りで指定（例: 3.0,3.5,4.0,4.5,5.0）")
 	inflation := flag.Float64("inflation", 2.0, "年間物価上昇率（%）")
 	period := flag.Int("period", 30, "シミュレーション期間（年）")
-	rule := flag.String("rule", "inflation", "取り崩しルール: fixed, inflation, floor-ceiling, guardrail")
+	rule := flag.String("rule", "inflation", "取り崩しルール: fixed, inflation, skip-down, floor-ceiling, guardrail")
 	floor := flag.Float64("floor", 0.80, "フロア・シーリングの下限倍率")
 	ceiling := flag.Float64("ceiling", 1.20, "フロア・シーリングの上限倍率")
 	detailYear := flag.Int("detail", 0, "指定した開始年の詳細を表示")
@@ -92,6 +92,8 @@ func selectRule(name string, floor, ceiling float64) simulator.WithdrawalRule {
 		return simulator.FixedAmountRule()
 	case "inflation":
 		return simulator.InflationAdjustedRule()
+	case "skip-down":
+		return simulator.SkipDownYearRule()
 	case "floor-ceiling":
 		return simulator.FloorCeilingRule(floor, ceiling)
 	case "guardrail":
