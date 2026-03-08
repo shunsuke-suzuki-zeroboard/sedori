@@ -160,6 +160,47 @@ func printSummary(r *simulator.SimulationResult) {
 		fmt.Println()
 	}
 
+	// スキップ統計（スキップが発生した場合のみ表示）
+	var totalSkips int
+	var maxSkips int
+	var maxConsec int
+	var maxSkippedAmt float64
+	var sumSkippedAmt float64
+	var skippedPeriodCount int
+	for _, p := range r.Periods {
+		if p.SkipCount > 0 {
+			skippedPeriodCount++
+			totalSkips += p.SkipCount
+			sumSkippedAmt += p.SkippedAmount
+			if p.SkipCount > maxSkips {
+				maxSkips = p.SkipCount
+			}
+			if p.MaxConsecSkips > maxConsec {
+				maxConsec = p.MaxConsecSkips
+			}
+			if p.SkippedAmount > maxSkippedAmt {
+				maxSkippedAmt = p.SkippedAmount
+			}
+		}
+	}
+
+	if skippedPeriodCount > 0 {
+		avgSkips := float64(totalSkips) / float64(r.TotalCount)
+		avgSkippedAmt := sumSkippedAmt / float64(r.TotalCount)
+		baseAnnual := s.InitialPortfolio * s.WithdrawalRate
+		yearsEquiv := maxSkippedAmt / baseAnnual
+
+		fmt.Println("【取り崩しスキップ統計】")
+		fmt.Printf("  スキップ発生:     %d / %d 期間\n", skippedPeriodCount, r.TotalCount)
+		fmt.Printf("  平均スキップ年数: %.1f年 / %d年\n", avgSkips, s.PeriodYears)
+		fmt.Printf("  最大スキップ年数: %d年（うち最大連続: %d年）\n", maxSkips, maxConsec)
+		fmt.Println()
+		fmt.Println("【必要な生活費バッファ（スキップ年の生活費）】")
+		fmt.Printf("  平均必要額:       %s\n", formatYen(avgSkippedAmt))
+		fmt.Printf("  最大必要額:       %s（初年度取り崩し額の約%.1f年分）\n", formatYen(maxSkippedAmt), yearsEquiv)
+		fmt.Println()
+	}
+
 	// 失敗ケースの一覧
 	failedPeriods := make([]simulator.PeriodResult, 0)
 	for _, p := range r.Periods {
@@ -213,18 +254,12 @@ func printDetail(r *simulator.SimulationResult, startYear int) {
 			fmt.Printf("【%d年開始の詳細】\n", startYear)
 			fmt.Printf("  結果: %s\n", boolToResult(p.Success))
 			fmt.Printf("  最終残高: %s\n", formatYen(p.FinalBalance))
-			fmt.Println()
-			fmt.Printf("  %-6s  %14s  %14s  %8s  %14s\n", "年", "期首残高", "取り崩し", "騰落率", "期末残高")
-			fmt.Println("  " + strings.Repeat("─", 64))
-			for _, y := range p.Years {
-				fmt.Printf("  %-6d  %14s  %14s  %+7.1f%%  %14s\n",
-					y.Year,
-					formatYen(y.StartBalance),
-					formatYen(y.Withdrawal),
-					y.MarketReturn*100,
-					formatYen(y.EndBalance))
+			if p.SkipCount > 0 {
+				fmt.Printf("  スキップ: %d年（最大連続: %d年）/ 要バッファ: %s\n",
+					p.SkipCount, p.MaxConsecSkips, formatYen(p.SkippedAmount))
 			}
 			fmt.Println()
+			printYearTable(p)
 			return
 		}
 	}
@@ -250,18 +285,12 @@ func printWorstCase(r *simulator.SimulationResult) {
 	fmt.Printf("【最悪ケース: %d年開始】\n", worst.StartYear)
 	fmt.Printf("  結果: %s\n", boolToResult(worst.Success))
 	fmt.Printf("  最終残高: %s\n", formatYen(worst.FinalBalance))
-	fmt.Println()
-	fmt.Printf("  %-6s  %14s  %14s  %8s  %14s\n", "年", "期首残高", "取り崩し", "騰落率", "期末残高")
-	fmt.Println("  " + strings.Repeat("─", 64))
-	for _, y := range worst.Years {
-		fmt.Printf("  %-6d  %14s  %14s  %+7.1f%%  %14s\n",
-			y.Year,
-			formatYen(y.StartBalance),
-			formatYen(y.Withdrawal),
-			y.MarketReturn*100,
-			formatYen(y.EndBalance))
+	if worst.SkipCount > 0 {
+		fmt.Printf("  スキップ: %d年（最大連続: %d年）/ 要バッファ: %s\n",
+			worst.SkipCount, worst.MaxConsecSkips, formatYen(worst.SkippedAmount))
 	}
 	fmt.Println()
+	printYearTable(*worst)
 }
 
 func findDepletionYear(p simulator.PeriodResult) int {
@@ -271,6 +300,25 @@ func findDepletionYear(p simulator.PeriodResult) int {
 		}
 	}
 	return len(p.Years)
+}
+
+func printYearTable(p simulator.PeriodResult) {
+	fmt.Printf("  %-6s  %14s  %14s  %8s  %14s  %s\n", "年", "期首残高", "取り崩し", "騰落率", "期末残高", "備考")
+	fmt.Println("  " + strings.Repeat("─", 76))
+	for _, y := range p.Years {
+		note := ""
+		if y.Withdrawal == 0 && y.StartBalance > 0 {
+			note = "SKIP"
+		}
+		fmt.Printf("  %-6d  %14s  %14s  %+7.1f%%  %14s  %s\n",
+			y.Year,
+			formatYen(y.StartBalance),
+			formatYen(y.Withdrawal),
+			y.MarketReturn*100,
+			formatYen(y.EndBalance),
+			note)
+	}
+	fmt.Println()
 }
 
 func boolToResult(b bool) string {

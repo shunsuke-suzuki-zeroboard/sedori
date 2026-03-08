@@ -17,11 +17,14 @@ type YearResult struct {
 
 // PeriodResult holds the outcome of a single rolling-period simulation.
 type PeriodResult struct {
-	StartYear    int          // First year of this simulation period
-	EndYear      int          // Last year of this simulation period
-	Success      bool         // True if portfolio survived the entire period
-	FinalBalance float64      // Portfolio value at the end
-	Years        []YearResult // Year-by-year breakdown
+	StartYear      int          // First year of this simulation period
+	EndYear        int          // Last year of this simulation period
+	Success        bool         // True if portfolio survived the entire period
+	FinalBalance   float64      // Portfolio value at the end
+	Years          []YearResult // Year-by-year breakdown
+	SkipCount      int          // Number of years where withdrawal was skipped (0 amount)
+	SkippedAmount  float64      // Total amount that would have been withdrawn in skipped years
+	MaxConsecSkips int          // Maximum consecutive skip years
 }
 
 // SimulationResult holds the aggregate results across all rolling periods.
@@ -73,6 +76,10 @@ func simulatePeriod(s Strategy, returns []AnnualReturn) PeriodResult {
 
 	years := make([]YearResult, 0, len(returns))
 	success := true
+	skipCount := 0
+	skippedAmount := 0.0
+	consecSkips := 0
+	maxConsecSkips := 0
 
 	for i, ar := range returns {
 		startBalance := balance
@@ -83,6 +90,23 @@ func simulatePeriod(s Strategy, returns []AnnualReturn) PeriodResult {
 			withdrawal = baseWithdrawal
 		} else {
 			withdrawal = s.Rule.AdjustWithdrawal(baseWithdrawal, prevWithdrawal, s.InflationRate, returns[i-1].Return, i)
+		}
+
+		// Track skipped years and calculate what would have been needed
+		if withdrawal == 0 && startBalance > 0 {
+			skipCount++
+			consecSkips++
+			if consecSkips > maxConsecSkips {
+				maxConsecSkips = consecSkips
+			}
+			// Calculate what the inflation-adjusted withdrawal would have been
+			expectedWithdrawal := baseWithdrawal
+			for j := 0; j < i; j++ {
+				expectedWithdrawal *= (1 + s.InflationRate)
+			}
+			skippedAmount += expectedWithdrawal
+		} else {
+			consecSkips = 0
 		}
 
 		// Cannot withdraw more than available
@@ -132,11 +156,14 @@ func simulatePeriod(s Strategy, returns []AnnualReturn) PeriodResult {
 	}
 
 	return PeriodResult{
-		StartYear:    returns[0].Year,
-		EndYear:      returns[len(returns)-1].Year,
-		Success:      success,
-		FinalBalance: balance,
-		Years:        years,
+		StartYear:      returns[0].Year,
+		EndYear:        returns[len(returns)-1].Year,
+		Success:        success,
+		FinalBalance:   balance,
+		Years:          years,
+		SkipCount:      skipCount,
+		SkippedAmount:  skippedAmount,
+		MaxConsecSkips: maxConsecSkips,
 	}
 }
 
